@@ -1,0 +1,8 @@
+project(test)
+add_executable(app 1.cpp)
+set(CMAKE_CXX_STANDARD 11)
+find_package (SQLite3)
+if (SQLITE3_FOUND)
+  include_directories(${SQLITE3_INCLUDE_DIRS})
+  target_link_libraries (app LINK_PUBLIC sqlite3 pthread)
+endif (SQLITE3_FOUND)
