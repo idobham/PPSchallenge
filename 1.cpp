@@ -1,21 +1,17 @@
 #include <iostream>
 #include <string>
-#include <algorithm>
 #include <thread>
-#include <sqlite3.h>
+#include "sqlite3.h"
 #include <chrono>
 #include <ctime>
-#include <vector>
 #include <time.h>
 #include <fstream>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <unistd.h>
 
 using namespace std;
 
 static int DatabaseCreator(const char* c);
 static int TableCreator(const char* c);
+static int TableCreatorString(const char* c);
 static int DataInserter(const char* c, string str);
 static int DataSelector(const char* c);
 static int DataPrinter(void* Unused, int argc, char** argv, char** azColName);
@@ -27,8 +23,31 @@ string pfx1, pfx2;
 const char* dir = "Database.db";
 
 int main()
-{	
+{
+	ifstream ConfigFile("fconfig.ini");
+	string str;
+	for (int i = 0; i < 6; i++) {
+		getline(ConfigFile, str);
+		if (str[0] == 'p')
+		{
+			if (str[1] == '1')
+			{
+				str.erase(0, 5);
+				pfx1 = str;
+				cout << "Primary Prefix set successfully: " << pfx1 << endl;
+			}
+			else if (str[1] == '2')
+			{
+				str.erase(0, 5);
+				pfx2 = str;
+				cout << "Primary Prefix set successfully: " << pfx2 << endl;
+			}
+		}
+
+	}
+	DatabaseCreator(dir);
 	TableCreator(dir);
+	TableCreatorString(dir);
 	thread ThreadI(CatcherThread);
 	thread ThreadII(PrinterThread);
 
@@ -56,7 +75,7 @@ static int TableCreator(const char* c)
 
 	string sql = "CREATE TABLE IF NOT EXISTS TABLEA ("
 		"ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,"
-		"NAME TEXT NOT NULL,"
+		"NAME INT NOT NULL,"
 		"TIME TEXT NOT NULL);";
 
 	int exit = 0;
@@ -83,7 +102,7 @@ static int TableCreatorString(const char* c)
 
 	string sql = "CREATE TABLE IF NOT EXISTS TABLESTRING ("
 		"ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,"
-		"NAME TEXT NOT NULL,"
+		"NAME INTEGER NOT NULL,"
 		"TIME TEXT NOT NULL);";
 
 	int exit = 0;
@@ -108,11 +127,11 @@ static int DataInserter(const char* c, string str)
 	sqlite3* Database;
 	char* messageError;
 
-	cout << chrono::system_clock::now << endl;
+	//cout << chrono::system_clock::now << endl;
 
 	if (str.substr(0, pfx1.size()) == pfx1)
 	{
-		str.erase(0,pfx1.size());
+		str.erase(0, pfx1.size());
 		string sql = "INSERT INTO TABLEA('NAME', 'TIME') VALUES ('" + str + "', 'time'); ";
 		int exit = sqlite3_open(c, &Database);
 		exit = sqlite3_exec(Database, sql.c_str(), NULL, 0, &messageError);
@@ -126,7 +145,7 @@ static int DataInserter(const char* c, string str)
 	}
 	if (str.substr(0, pfx2.size()) == pfx2)
 	{
-		str.erase(0,pfx2.size());
+		str.erase(0, pfx2.size());
 		string sql = "INSERT INTO TABLESTRING('NAME', 'TIME') VALUES ('" + str + "', '" + "NowToString" + "'); ";
 		int exit = sqlite3_open(c, &Database);
 		exit = sqlite3_exec(Database, sql.c_str(), NULL, 0, &messageError);
@@ -145,62 +164,11 @@ static int DataInserter(const char* c, string str)
 
 void DataCatcher()
 {
-    ifstream ConfigFile("fconfig.ini");
-	string str;
-    int port;
-	for (int i = 0; i < 6; i++) {
-		getline(ConfigFile, str);
-		if (str[0] == 'p')
-		{
-			if (str[1] == '1')
-			{
-				str.erase(0, 5);
-				pfx1 = str;
-				cout << pfx1 << endl;
-			}
-			else if (str[1] == '2')
-			{
-				str.erase(0, 5);
-				pfx2 = str;
-				cout << pfx2 << endl;
-			}
-            else if (str[2] == 'o')
-            {
-                str.erase(0, 7);
-                port = atoi(str.c_str());
-            }
-		}
-
-	}
-    ConfigFile.close();
-
-    int sock = 0, valread, client_fd;
-    struct sockaddr_in serv_addr;
-    char buffer[1024] = { 0 };
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        printf("\n Socket creation error \n");
-        return;
-    }
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr)
-        <= 0) {
-        printf(
-            "\nInvalid address/ Address not supported \n");
-        return;
-    }
-    if ((client_fd
-         = connect(sock, (struct sockaddr*)&serv_addr,
-                   sizeof(serv_addr)))
-        < 0) {
-        printf("\nConnection Failed \n");
-        return;
-    }
 	for (;;)
 	{
-        valread = read(sock, buffer, 1024);
-		DataInserter(dir, string(buffer));
+		string s;
+		cin >> s;
+		DataInserter(dir, s);
 	}
 
 }
@@ -210,8 +178,8 @@ static int DataSelector(const char* c)
 	sqlite3* Database;
 	char* messageError;
 
-	string sql = "SELECT * FROM TABLEA;";
-	
+	string sql = "SELECT * FROM TABLEA ORDER BY NAME;";
+
 	int exit = sqlite3_open(c, &Database);
 	exit = sqlite3_exec(Database, sql.c_str(), DataPrinter, NULL, &messageError);
 
@@ -222,33 +190,28 @@ static int DataSelector(const char* c)
 		sqlite3_free(messageError);
 	}
 	else
-		cout << "DataSelector selected data successfully.";
+		cout << "DataSelector selected data successfully." << endl;
 
 	return 0;
 }
 
 static int DataPrinter(void* NotUsed, int argc, char** argv, char** azColName)
 {
-	vector <string> sorter;
-	//cout << azColName[0] << endl;
+
 	for (int i = 0; i < argc; i++) {
-		//cout << azColName[i] << ": " << argv[i] << endl;
-		sorter.push_back(argv[i]);
-	}
-	sort(sorter.begin(), sorter.end());
-	for (int i = 0; i < sorter.size(); i++)
-	{
-		cout << sorter[i] << ": " << argv[i] << endl;
+		// column name and value
+		cout << azColName[i] << ": " << argv[i] << endl;
 	}
 
 	cout << endl;
+
 
 	return 0;
 }
 
 void PrinterThread()
 {
-	for(;;) {
+	for (;;) {
 		this_thread::sleep_for(chrono::milliseconds(10000));
 		DataSelector("Database.db");
 	}
